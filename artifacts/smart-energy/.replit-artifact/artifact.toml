@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "SA7 Smart Energy"
+description = "A responsive smart energy automation system for households and small offices. It tracks virtual appliance telemetry, calculates energy costs in Indian rupees, detects wastage, executes automation rules, and provides secure server-side Gemini analysis."
+version = "1.0.0"
+id = "artifacts/smart-energy"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23293
+
+[services.development]
+run = "pnpm --filter @workspace/smart-energy run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/smart-energy", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/smart-energy/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23293"
+BASE_PATH = "/"
