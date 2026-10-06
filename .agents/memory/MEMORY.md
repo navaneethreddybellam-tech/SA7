@@ -1,0 +1,1 @@
+- [Gemini model availability](gemini-model-availability.md) — verify direct API model IDs against current Google docs and a live request; a listed model returned 404 before its published shutdown.

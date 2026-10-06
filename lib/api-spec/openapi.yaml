@@ -3,13 +3,27 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: SA7 Smart Energy Automation API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Session authentication
+  - name: devices
+    description: Virtual smart devices
+  - name: usage
+    description: Energy telemetry records
+  - name: automation
+    description: Rule-based virtual device automation
+  - name: waste
+    description: Energy wastage detection
+  - name: analytics
+    description: Dashboard and tariff settings
+  - name: ai
+    description: User-requested energy analysis
 paths:
   /healthz:
     get:
@@ -24,7 +38,543 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Create an account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthInput"
+      responses:
+        "201":
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentUser"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: Email is already registered
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Sign in
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthInput"
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentUser"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Sign out
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Signed out
+  /auth/me:
+    get:
+      operationId: getCurrentUser
+      tags: [auth]
+      summary: Get the signed-in user
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentUser"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /devices:
+    get:
+      operationId: listDevices
+      tags: [devices]
+      summary: List the user's devices
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Devices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Device"
+    post:
+      operationId: createDevice
+      tags: [devices]
+      summary: Add a virtual device
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceInput"
+      responses:
+        "201":
+          description: Device created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /devices/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getDevice
+      tags: [devices]
+      summary: Get a device
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateDevice
+      tags: [devices]
+      summary: Update a device
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceUpdate"
+      responses:
+        "200":
+          description: Updated device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteDevice
+      tags: [devices]
+      summary: Delete a device and its dependent telemetry
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Device deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /usage:
+    get:
+      operationId: listUsage
+      tags: [usage]
+      summary: List energy usage records
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Usage records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UsageRecord"
+    post:
+      operationId: createUsage
+      tags: [usage]
+      summary: Add an energy usage record
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UsageInput"
+      responses:
+        "201":
+          description: Usage record created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageRecord"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /usage/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getUsage
+      tags: [usage]
+      summary: Get an energy usage record
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Usage record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageRecord"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateUsage
+      tags: [usage]
+      summary: Update an energy usage record
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UsageUpdate"
+      responses:
+        "200":
+          description: Updated usage record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageRecord"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteUsage
+      tags: [usage]
+      summary: Delete an energy usage record
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Usage record deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /automation-rules:
+    get:
+      operationId: listAutomationRules
+      tags: [automation]
+      summary: List automation rules
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Automation rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AutomationRule"
+    post:
+      operationId: createAutomationRule
+      tags: [automation]
+      summary: Create an automation rule
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AutomationRuleInput"
+      responses:
+        "201":
+          description: Rule created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutomationRule"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /automation-rules/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    patch:
+      operationId: updateAutomationRule
+      tags: [automation]
+      summary: Update an automation rule
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AutomationRuleUpdate"
+      responses:
+        "200":
+          description: Updated rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutomationRule"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteAutomationRule
+      tags: [automation]
+      summary: Delete an automation rule
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Rule deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /automation-rules/{id}/enabled:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    patch:
+      operationId: setAutomationRuleEnabled
+      tags: [automation]
+      summary: Enable or disable an automation rule
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuleEnabledInput"
+      responses:
+        "200":
+          description: Updated rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutomationRule"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /waste-events:
+    get:
+      operationId: listWasteEvents
+      tags: [waste]
+      summary: List detected energy wastage
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Waste events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WasteEvent"
+  /waste-events/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getWasteEvent
+      tags: [waste]
+      summary: Get a waste event
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Waste event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WasteEvent"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateWasteStatus
+      tags: [waste]
+      summary: Update waste event status
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WasteStatusInput"
+      responses:
+        "200":
+          description: Updated waste event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WasteEvent"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /automation-actions:
+    get:
+      operationId: listAutomationActions
+      tags: [automation]
+      summary: List automated device actions
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Automation action log
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AutomationAction"
+  /dashboard:
+    get:
+      operationId: getDashboard
+      tags: [analytics]
+      summary: Get calculated energy dashboard metrics
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Dashboard analytics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+  /settings/tariff:
+    get:
+      operationId: getTariff
+      tags: [analytics]
+      summary: Get the configured electricity tariff
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Tariff settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TariffSettings"
+    patch:
+      operationId: updateTariff
+      tags: [analytics]
+      summary: Update the electricity tariff
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TariffInput"
+      responses:
+        "200":
+          description: Updated tariff
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TariffSettings"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /simulation/run:
+    post:
+      operationId: runSimulation
+      tags: [usage]
+      summary: Generate one virtual telemetry interval and evaluate automations
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimulationInput"
+      responses:
+        "200":
+          description: Simulation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulationResult"
+  /ai/analysis:
+    post:
+      operationId: runEnergyAnalysis
+      tags: [ai]
+      summary: Analyze recent household energy usage with Gemini
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Structured energy analysis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnergyAnalysis"
+        "422":
+          description: Not enough usage data to analyze
+        "502":
+          description: AI service returned an invalid response
 components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: connect.sid
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +583,260 @@ components:
           type: string
       required:
         - status
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+    AuthInput:
+      type: object
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 10
+          maxLength: 128
+      required: [email, password]
+    CurrentUser:
+      type: object
+      properties:
+        id: { type: integer }
+        email: { type: string, format: email }
+        createdAt: { type: string, format: date-time }
+      required: [id, email, createdAt]
+    Device:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        type:
+          type: string
+          enum: [AC, Fan, Light, TV, Refrigerator, "Washing Machine", Computer, Heater, Other]
+        ratedPowerW: { type: number }
+        state: { type: string, enum: [ON, OFF] }
+        thresholdKwh: { type: number }
+        maxRuntimeMinutes: { type: integer }
+        room: { type: ["string", "null"] }
+        active: { type: boolean }
+        onSince: { type: ["string", "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+      required: [id, name, type, ratedPowerW, state, thresholdKwh, maxRuntimeMinutes, room, active, onSince, createdAt]
+    DeviceInput:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        type:
+          type: string
+          enum: [AC, Fan, Light, TV, Refrigerator, "Washing Machine", Computer, Heater, Other]
+        ratedPowerW: { type: number, exclusiveMinimum: 0, maximum: 50000 }
+        state: { type: string, enum: [ON, OFF] }
+        thresholdKwh: { type: number, exclusiveMinimum: 0, maximum: 1000 }
+        maxRuntimeMinutes: { type: integer, minimum: 1, maximum: 1440 }
+        room: { type: ["string", "null"], maxLength: 80 }
+        active: { type: boolean }
+      required: [name, type, ratedPowerW, state, thresholdKwh, maxRuntimeMinutes, active]
+    DeviceUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        type:
+          type: string
+          enum: [AC, Fan, Light, TV, Refrigerator, "Washing Machine", Computer, Heater, Other]
+        ratedPowerW: { type: number, exclusiveMinimum: 0, maximum: 50000 }
+        state: { type: string, enum: [ON, OFF] }
+        thresholdKwh: { type: number, exclusiveMinimum: 0, maximum: 1000 }
+        maxRuntimeMinutes: { type: integer, minimum: 1, maximum: 1440 }
+        room: { type: ["string", "null"], maxLength: 80 }
+        active: { type: boolean }
+    UsageRecord:
+      type: object
+      properties:
+        id: { type: integer }
+        deviceId: { type: integer }
+        deviceName: { type: string }
+        energyKwh: { type: number }
+        durationMinutes: { type: integer }
+        recordedAt: { type: string, format: date-time }
+        costInr: { type: number }
+        simulated: { type: boolean }
+      required: [id, deviceId, deviceName, energyKwh, durationMinutes, recordedAt, costInr, simulated]
+    UsageInput:
+      type: object
+      additionalProperties: false
+      properties:
+        deviceId: { type: integer, minimum: 1 }
+        energyKwh: { type: number, minimum: 0, maximum: 10000 }
+        durationMinutes: { type: integer, minimum: 1, maximum: 10080 }
+        recordedAt: { type: string, format: date-time }
+      required: [deviceId, energyKwh, durationMinutes]
+    UsageUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        deviceId: { type: integer, minimum: 1 }
+        energyKwh: { type: number, minimum: 0, maximum: 10000 }
+        durationMinutes: { type: integer, minimum: 1, maximum: 10080 }
+        recordedAt: { type: string, format: date-time }
+    AutomationRule:
+      type: object
+      properties:
+        id: { type: integer }
+        deviceId: { type: integer }
+        deviceName: { type: string }
+        triggerType: { type: string, enum: [runtime, energy] }
+        thresholdValue: { type: number }
+        action: { type: string, enum: [turn_off] }
+        enabled: { type: boolean }
+        createdAt: { type: string, format: date-time }
+      required: [id, deviceId, deviceName, triggerType, thresholdValue, action, enabled, createdAt]
+    AutomationRuleInput:
+      type: object
+      additionalProperties: false
+      properties:
+        deviceId: { type: integer, minimum: 1 }
+        triggerType: { type: string, enum: [runtime, energy] }
+        thresholdValue: { type: number, exclusiveMinimum: 0, maximum: 10000 }
+        action: { type: string, enum: [turn_off] }
+        enabled: { type: boolean }
+      required: [deviceId, triggerType, thresholdValue, action, enabled]
+    AutomationRuleUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        deviceId: { type: integer, minimum: 1 }
+        triggerType: { type: string, enum: [runtime, energy] }
+        thresholdValue: { type: number, exclusiveMinimum: 0, maximum: 10000 }
+        action: { type: string, enum: [turn_off] }
+        enabled: { type: boolean }
+    RuleEnabledInput:
+      type: object
+      additionalProperties: false
+      properties:
+        enabled: { type: boolean }
+      required: [enabled]
+    WasteEvent:
+      type: object
+      properties:
+        id: { type: integer }
+        deviceId: { type: integer }
+        deviceName: { type: string }
+        reason: { type: string }
+        severity: { type: string, enum: [low, medium, high] }
+        wastedKwh: { type: number }
+        costInr: { type: number }
+        status: { type: string, enum: [open, resolved, dismissed] }
+        createdAt: { type: string, format: date-time }
+      required: [id, deviceId, deviceName, reason, severity, wastedKwh, costInr, status, createdAt]
+    WasteStatusInput:
+      type: object
+      additionalProperties: false
+      properties:
+        status: { type: string, enum: [open, resolved, dismissed] }
+      required: [status]
+    AutomationAction:
+      type: object
+      properties:
+        id: { type: integer }
+        deviceId: { type: integer }
+        deviceName: { type: string }
+        ruleId: { type: integer }
+        triggerReason: { type: string }
+        previousState: { type: string, enum: [ON, OFF] }
+        newState: { type: string, enum: [ON, OFF] }
+        energySavedKwh: { type: number }
+        moneySavedInr: { type: number }
+        createdAt: { type: string, format: date-time }
+      required: [id, deviceId, deviceName, ruleId, triggerReason, previousState, newState, energySavedKwh, moneySavedInr, createdAt]
+    Dashboard:
+      type: object
+      properties:
+        currentLoadKw: { type: number }
+        energyTodayKwh: { type: number }
+        energyMonthKwh: { type: number }
+        estimatedCostInr: { type: number }
+        wastedEnergyKwh: { type: number }
+        potentialSavingsInr: { type: number }
+        energySavedKwh: { type: number }
+        moneySavedInr: { type: number }
+        automationActionsCount: { type: integer }
+        deviceSummary:
+          type: object
+          properties:
+            total: { type: integer }
+            on: { type: integer }
+            off: { type: integer }
+            inactive: { type: integer }
+          required: [total, on, off, inactive]
+        dailyTrend:
+          type: array
+          items:
+            type: object
+            properties:
+              date: { type: string, format: date }
+              energyKwh: { type: number }
+            required: [date, energyKwh]
+        deviceUsage:
+          type: array
+          items:
+            type: object
+            properties:
+              deviceId: { type: integer }
+              deviceName: { type: string }
+              energyKwh: { type: number }
+            required: [deviceId, deviceName, energyKwh]
+        recentActivity:
+          type: array
+          items:
+            type: object
+            properties:
+              kind: { type: string, enum: [waste, automation] }
+              message: { type: string }
+              severity: { type: string, enum: [low, medium, high] }
+              createdAt: { type: string, format: date-time }
+            required: [kind, message, severity, createdAt]
+      required: [currentLoadKw, energyTodayKwh, energyMonthKwh, estimatedCostInr, wastedEnergyKwh, potentialSavingsInr, energySavedKwh, moneySavedInr, automationActionsCount, deviceSummary, dailyTrend, deviceUsage, recentActivity]
+    TariffSettings:
+      type: object
+      properties:
+        tariffInrPerKwh: { type: number }
+      required: [tariffInrPerKwh]
+    TariffInput:
+      type: object
+      additionalProperties: false
+      properties:
+        tariffInrPerKwh: { type: number, exclusiveMinimum: 0, maximum: 10000 }
+      required: [tariffInrPerKwh]
+    SimulationInput:
+      type: object
+      additionalProperties: false
+      properties:
+        durationMinutes: { type: integer, minimum: 5, maximum: 120 }
+    SimulationResult:
+      type: object
+      properties:
+        recordsCreated: { type: integer }
+        wasteEventsCreated: { type: integer }
+        actionsExecuted: { type: integer }
+      required: [recordsCreated, wasteEventsCreated, actionsExecuted]
+    EnergyAnalysis:
+      type: object
+      properties:
+        id: { type: integer }
+        problemDetected: { type: string }
+        whyItMatters: { type: string }
+        deviceId: { type: ["integer", "null"] }
+        deviceName: { type: ["string", "null"] }
+        recommendedAction: { type: string }
+        priority: { type: string, enum: [low, medium, high] }
+        estimatedSavingsKwh: { type: number }
+        estimatedSavingsInr: { type: number }
+        createdAt: { type: string, format: date-time }
+      required: [id, problemDetected, whyItMatters, deviceId, deviceName, recommendedAction, priority, estimatedSavingsKwh, estimatedSavingsInr, createdAt]
 
