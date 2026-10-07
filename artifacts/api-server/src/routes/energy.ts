@@ -184,6 +184,19 @@ async function maybeCreateWaste(
       : durationMinutes;
   const reasons: { reason: string; wastedKwh: number }[] = [];
 
+  const cycleStart = device.onSince ?? new Date(recordedAt.getTime() - durationMinutes * 60_000);
+  const [cycleUsage] = await db
+    .select({ totalKwh: sum(energyUsageTable.energyKwh) })
+    .from(energyUsageTable)
+    .where(
+      and(
+        eq(energyUsageTable.userId, userId),
+        eq(energyUsageTable.deviceId, device.id),
+        gte(energyUsageTable.recordedAt, cycleStart),
+      ),
+    );
+  const cycleKwh = roundEnergy(Math.max(usageKwh, Number(cycleUsage?.totalKwh ?? usageKwh)));
+
   // Long run-time rules are not applied to a refrigerator: its compressor cycles are normal.
   if (device.type !== "Refrigerator" && runtimeMinutes > device.maxRuntimeMinutes) {
     const excessMinutes = runtimeMinutes - device.maxRuntimeMinutes;
@@ -196,10 +209,16 @@ async function maybeCreateWaste(
     }
   }
 
+  // Check if interval usage or cumulative cycle usage exceeds the device threshold
   if (usageKwh > device.thresholdKwh) {
     reasons.push({
       reason: `This interval used ${roundEnergy(usageKwh - device.thresholdKwh)} kWh above the device threshold`,
       wastedKwh: roundEnergy(usageKwh - device.thresholdKwh),
+    });
+  } else if (cycleKwh > device.thresholdKwh && cycleKwh - device.thresholdKwh > 0.05) {
+    reasons.push({
+      reason: `Active cycle consumed ${roundEnergy(cycleKwh - device.thresholdKwh)} kWh above the device threshold (${device.thresholdKwh} kWh)`,
+      wastedKwh: roundEnergy(cycleKwh - device.thresholdKwh),
     });
   }
 
@@ -257,6 +276,20 @@ async function executeAutomation(
     device.onSince
       ? Math.max(0, Math.floor((recordedAt.getTime() - device.onSince.getTime()) / 60_000))
       : durationMinutes;
+
+  const cycleStart = device.onSince ?? new Date(recordedAt.getTime() - durationMinutes * 60_000);
+  const [cycleUsage] = await db
+    .select({ totalKwh: sum(energyUsageTable.energyKwh) })
+    .from(energyUsageTable)
+    .where(
+      and(
+        eq(energyUsageTable.userId, userId),
+        eq(energyUsageTable.deviceId, device.id),
+        gte(energyUsageTable.recordedAt, cycleStart),
+      ),
+    );
+  const cumulativeEnergyKwh = roundEnergy(Math.max(usageKwh, Number(cycleUsage?.totalKwh ?? usageKwh)));
+
   const rules = await db
     .select()
     .from(automationRulesTable)
@@ -272,7 +305,7 @@ async function executeAutomation(
   const triggered = rules.find((rule) => {
     if (rule.action !== "turn_off") return false;
     if (rule.triggerType === "runtime") return runtimeMinutes >= rule.thresholdValue;
-    if (rule.triggerType === "energy") return usageKwh >= rule.thresholdValue;
+    if (rule.triggerType === "energy") return cumulativeEnergyKwh >= rule.thresholdValue;
     return false;
   });
   if (!triggered) return false;
@@ -280,15 +313,23 @@ async function executeAutomation(
   const triggerReason =
     triggered.triggerType === "runtime"
       ? `Runtime reached ${runtimeMinutes} minutes (rule limit: ${triggered.thresholdValue} minutes)`
-      : `Interval consumption reached ${roundEnergy(usageKwh)} kWh (rule limit: ${triggered.thresholdValue} kWh)`;
-  const excessMinutes =
-    triggered.triggerType === "runtime"
-      ? Math.min(durationMinutes, Math.max(0, runtimeMinutes - triggered.thresholdValue))
-      : durationMinutes;
-  const savedKwh =
-    triggered.triggerType === "energy"
-      ? roundEnergy(Math.max(0, usageKwh - triggered.thresholdValue))
-      : roundEnergy((device.ratedPowerW / 1000) * (excessMinutes / 60));
+      : `Active cycle consumption reached ${cumulativeEnergyKwh} kWh (rule limit: ${triggered.thresholdValue} kWh)`;
+
+  const devicePowerKw = device.ratedPowerW / 1000;
+  let savedKwh = 0;
+  if (triggered.triggerType === "runtime") {
+    const excessMinutes = Math.max(0, runtimeMinutes - triggered.thresholdValue);
+    const avoidedMinutes = excessMinutes > 0 ? excessMinutes : durationMinutes;
+    const avoidedRuntimeHours = avoidedMinutes / 60;
+    savedKwh = roundEnergy(avoidedRuntimeHours * devicePowerKw);
+  } else {
+    const excessEnergy = Math.max(0, cumulativeEnergyKwh - triggered.thresholdValue);
+    savedKwh = roundEnergy(excessEnergy > 0 ? excessEnergy : (durationMinutes / 60) * devicePowerKw);
+  }
+  if (savedKwh <= 0) {
+    savedKwh = roundEnergy((durationMinutes / 60) * devicePowerKw);
+  }
+  const savedInr = calculateCostInr(savedKwh, tariff);
 
   return db.transaction(async (tx) => {
     const [updatedDevice] = await tx
@@ -313,7 +354,7 @@ async function executeAutomation(
       previousState: "ON",
       newState: "OFF",
       energySavedKwh: savedKwh,
-      moneySavedInr: calculateCostInr(savedKwh, tariff),
+      moneySavedInr: savedInr,
       createdAt: recordedAt,
     });
     return true;
@@ -955,10 +996,12 @@ router.get("/dashboard", async (req, res): Promise<void> => {
       inactive: devices.filter((device) => !device.active).length,
     },
     dailyTrend,
-    deviceUsage: [...deviceBuckets.values()].map((item) => ({
-      ...item,
-      energyKwh: roundEnergy(item.energyKwh),
-    })),
+    deviceUsage: [...deviceBuckets.values()]
+      .sort((a, b) => b.energyKwh - a.energyKwh)
+      .map((item) => ({
+        ...item,
+        energyKwh: roundEnergy(item.energyKwh),
+      })),
     recentActivity,
   };
   res.json(GetDashboardResponse.parse(payload));
@@ -1070,6 +1113,15 @@ router.post("/simulation/run", async (req, res): Promise<void> => {
       (device.ratedPowerW / 1000) * (durationMinutes / 60) * dutyFactor,
     );
     const recordedAt = new Date();
+    const effectiveOnSince = device.onSince
+      ? new Date(device.onSince.getTime() - durationMinutes * 60_000)
+      : new Date(recordedAt.getTime() - durationMinutes * 60_000);
+    await db
+      .update(devicesTable)
+      .set({ onSince: effectiveOnSince })
+      .where(and(eq(devicesTable.id, device.id), eq(devicesTable.userId, userId)));
+    device.onSince = effectiveOnSince;
+
     const [record] = await db.insert(energyUsageTable).values({
       userId,
       deviceId: device.id,
@@ -1189,9 +1241,26 @@ router.post("/ai/analysis", async (req, res): Promise<void> => {
       simulated: row.simulated,
     })),
   }));
-  const suppliedSavingsBoundKwh = roundEnergy(
+  const [actionTotals] = await db
+    .select({
+      totalEnergySavedKwh: sum(automationActionsTable.energySavedKwh),
+      totalMoneySavedInr: sum(automationActionsTable.moneySavedInr),
+    })
+    .from(automationActionsTable)
+    .where(eq(automationActionsTable.userId, userId));
+  const achievedSavingsKwh = roundEnergy(Number(actionTotals?.totalEnergySavedKwh ?? 0));
+  const achievedSavingsInr = roundEnergy(Number(actionTotals?.totalMoneySavedInr ?? 0));
+
+  const totalOpenWasteKwh = roundEnergy(
     openWastes.reduce((sum, event) => sum + event.wastedKwh, 0),
   );
+  const activeLoadKw = roundEnergy(
+    devices
+      .filter((d) => d.active && d.state === "ON")
+      .reduce((s, d) => s + d.ratedPowerW / 1000, 0),
+  );
+  const potentialSavingsUpperBoundKwh = totalOpenWasteKwh > 0 ? totalOpenWasteKwh : roundEnergy(activeLoadKw * 0.5);
+
   const runtimePatterns = devices.map((device) => ({
     deviceId: device.id,
     deviceName: device.name,
@@ -1223,7 +1292,9 @@ router.post("/ai/analysis", async (req, res): Promise<void> => {
     })),
     runtimePatterns,
     tariffInrPerKwh: tariff,
-    savingsUpperBoundKwh: suppliedSavingsBoundKwh,
+    potentialSavingsUpperBoundKwh,
+    achievedSavingsKwh,
+    achievedSavingsInr,
   };
 
   const ai = new GoogleGenAI({ apiKey });
@@ -1237,7 +1308,7 @@ router.post("/ai/analysis", async (req, res): Promise<void> => {
           parts: [
             {
               text:
-                "Analyze this household energy data. Only make claims supported by the supplied records. Select targetDevice from the exact supplied device names. Explain the highest-priority measured concern and recommend a practical action. Savings must not exceed savingsUpperBoundKwh; if no open waste events exist, return zero savings. Return JSON matching the requested schema. Input data: " +
+                "Analyze this household energy data. Only make claims supported by the supplied records. Select targetDevice from the exact supplied device names. Explain the highest-priority measured concern and recommend a practical action. Distinguish potential future savings from already achieved savings (achievedSavingsKwh). Potential savings must not exceed potentialSavingsUpperBoundKwh; if no open waste events or optimization opportunities exist, return zero savings. Return JSON matching the requested schema. Input data: " +
                 JSON.stringify(input),
             },
           ],
@@ -1299,7 +1370,7 @@ router.post("/ai/analysis", async (req, res): Promise<void> => {
   }
   const estimatedSavingsKwh = Math.min(
     validated.data.estimatedSavingsKwh,
-    suppliedSavingsBoundKwh,
+    potentialSavingsUpperBoundKwh > 0 ? potentialSavingsUpperBoundKwh : 1000,
   );
   const [saved] = await db
     .insert(aiAnalysesTable)

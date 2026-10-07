@@ -1,4 +1,4 @@
-import { db, automationRulesTable, devicesTable, energyUsageTable, userSettingsTable } from "@workspace/db";
+import { db, automationRulesTable, devicesTable, energyUsageTable, userSettingsTable, wasteEventsTable } from "@workspace/db";
 import { calculateCostInr, DEFAULT_TARIFF_INR_PER_KWH } from "./energy-utils";
 
 export async function createDemoData(userId: number): Promise<void> {
@@ -85,6 +85,22 @@ export async function createDemoData(userId: number): Promise<void> {
         });
       }
     }
-    await tx.insert(energyUsageTable).values(sampleRows);
+    const insertedUsage = await tx.insert(energyUsageTable).values(sampleRows).returning();
+    const acUsageRecords = insertedUsage.filter((row) => row.deviceId === ac.id);
+    const recentAcRecord = acUsageRecords[acUsageRecords.length - 1];
+    if (recentAcRecord) {
+      const wastedKwh = 1.092;
+      await tx.insert(wasteEventsTable).values({
+        userId,
+        usageId: recentAcRecord.id,
+        deviceId: ac.id,
+        reason: "Running 90 minutes beyond preferred runtime during peak afternoon",
+        severity: "medium",
+        wastedKwh,
+        costInr: calculateCostInr(wastedKwh, DEFAULT_TARIFF_INR_PER_KWH),
+        status: "open",
+        createdAt: recentAcRecord.recordedAt,
+      });
+    }
   });
 }
