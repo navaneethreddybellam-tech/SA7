@@ -33,6 +33,7 @@ import type {
   DeviceUpdate,
   EnergyAnalysis,
   HealthStatus,
+  LatestEnergyAnalysis,
   NotFoundResponse,
   RuleEnabledInput,
   SimulationInput,
@@ -2355,6 +2356,83 @@ export const useRunSimulation = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getRunSimulationMutationOptions(options));
     }
+
+export const getGetLatestEnergyAnalysisUrl = () => {
+
+
+
+
+  return `/api/ai/analysis`
+}
+
+/**
+ * @summary Get the latest saved energy analysis for the signed-in account
+ */
+export const getLatestEnergyAnalysis = async ( options?: Parameters<typeof customFetch>[1]): Promise<LatestEnergyAnalysis> => {
+
+  return customFetch<LatestEnergyAnalysis>(getGetLatestEnergyAnalysisUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLatestEnergyAnalysisQueryKey = () => {
+    return [
+    `/api/ai/analysis`
+    ] as const;
+    }
+
+
+export const getGetLatestEnergyAnalysisQueryOptions = <TData = Awaited<ReturnType<typeof getLatestEnergyAnalysis>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLatestEnergyAnalysis>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLatestEnergyAnalysisQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLatestEnergyAnalysis>>> = ({ signal }) => getLatestEnergyAnalysis({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLatestEnergyAnalysis>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLatestEnergyAnalysisQueryResult = NonNullable<Awaited<ReturnType<typeof getLatestEnergyAnalysis>>>
+export type GetLatestEnergyAnalysisQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the latest saved energy analysis for the signed-in account
+ */
+
+export function useGetLatestEnergyAnalysis<TData = Awaited<ReturnType<typeof getLatestEnergyAnalysis>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLatestEnergyAnalysis>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLatestEnergyAnalysisQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getRunEnergyAnalysisUrl = () => {
 

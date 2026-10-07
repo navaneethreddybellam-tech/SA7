@@ -11,6 +11,7 @@ import {
   CreateUsageResponse,
   GetDashboardResponse,
   GetDeviceResponse,
+  GetLatestEnergyAnalysisResponse,
   GetTariffResponse,
   GetUsageResponse,
   GetWasteEventResponse,
@@ -46,7 +47,14 @@ import {
   wasteEventsTable,
 } from "@workspace/db";
 import { requireAuth } from "../lib/session-auth";
-import { calculateCostInr, DEFAULT_TARIFF_INR_PER_KWH, roundEnergy } from "../lib/energy-utils";
+import {
+  calculateCostInr,
+  DEFAULT_TARIFF_INR_PER_KWH,
+  indiaDateKey,
+  indiaDayStart,
+  roundEnergy,
+  shiftDateKey,
+} from "../lib/energy-utils";
 
 const router: IRouter = Router();
 router.use(requireAuth);
@@ -163,6 +171,7 @@ async function toUsageDto(userId: number, id: number) {
 
 async function maybeCreateWaste(
   userId: number,
+  usageId: number,
   device: DbDevice,
   usageKwh: number,
   durationMinutes: number,
@@ -220,25 +229,10 @@ async function maybeCreateWaste(
   const detection = reasons[0];
   if (!detection || detection.wastedKwh <= 0) return false;
 
-  const duplicateSince = new Date(recordedAt.getTime() - 30 * 60 * 1000);
-  const [duplicate] = await db
-    .select({ id: wasteEventsTable.id })
-    .from(wasteEventsTable)
-    .where(
-      and(
-        eq(wasteEventsTable.userId, userId),
-        eq(wasteEventsTable.deviceId, device.id),
-        eq(wasteEventsTable.reason, detection.reason),
-        eq(wasteEventsTable.status, "open"),
-        gte(wasteEventsTable.createdAt, duplicateSince),
-      ),
-    )
-    .limit(1);
-  if (duplicate) return false;
-
   const severity = detection.wastedKwh >= 2 ? "high" : detection.wastedKwh >= 0.75 ? "medium" : "low";
   await db.insert(wasteEventsTable).values({
     userId,
+    usageId,
     deviceId: device.id,
     reason: detection.reason,
     severity,
@@ -296,26 +290,39 @@ async function executeAutomation(
       ? roundEnergy(Math.max(0, usageKwh - triggered.thresholdValue))
       : roundEnergy((device.ratedPowerW / 1000) * (excessMinutes / 60));
 
-  await db
-    .update(devicesTable)
-    .set({ state: "OFF", onSince: null })
-    .where(and(eq(devicesTable.id, device.id), eq(devicesTable.userId, userId)));
-  await db.insert(automationActionsTable).values({
-    userId,
-    deviceId: device.id,
-    ruleId: triggered.id,
-    triggerReason,
-    previousState: "ON",
-    newState: "OFF",
-    energySavedKwh: savedKwh,
-    moneySavedInr: calculateCostInr(savedKwh, tariff),
-    createdAt: recordedAt,
+  return db.transaction(async (tx) => {
+    const [updatedDevice] = await tx
+      .update(devicesTable)
+      .set({ state: "OFF", onSince: null })
+      .where(
+        and(
+          eq(devicesTable.id, device.id),
+          eq(devicesTable.userId, userId),
+          eq(devicesTable.state, "ON"),
+          eq(devicesTable.active, true),
+        ),
+      )
+      .returning({ id: devicesTable.id });
+    if (!updatedDevice) return false;
+
+    await tx.insert(automationActionsTable).values({
+      userId,
+      deviceId: device.id,
+      ruleId: triggered.id,
+      triggerReason,
+      previousState: "ON",
+      newState: "OFF",
+      energySavedKwh: savedKwh,
+      moneySavedInr: calculateCostInr(savedKwh, tariff),
+      createdAt: recordedAt,
+    });
+    return true;
   });
-  return true;
 }
 
 async function evaluateUsage(
   userId: number,
+  usageId: number,
   device: DbDevice,
   usageKwh: number,
   durationMinutes: number,
@@ -324,6 +331,7 @@ async function evaluateUsage(
 ) {
   const wasteCreated = await maybeCreateWaste(
     userId,
+    usageId,
     device,
     usageKwh,
     durationMinutes,
@@ -480,7 +488,15 @@ router.post("/usage", async (req, res): Promise<void> => {
       simulated: false,
     })
     .returning({ id: energyUsageTable.id });
-  await evaluateUsage(req.userId!, device, data.energyKwh, data.durationMinutes, recordedAt, tariff);
+  await evaluateUsage(
+    req.userId!,
+    created.id,
+    device,
+    data.energyKwh,
+    data.durationMinutes,
+    recordedAt,
+    tariff,
+  );
   const record = await toUsageDto(req.userId!, created.id);
   res.status(201).json(CreateUsageResponse.parse(record));
 });
@@ -533,7 +549,23 @@ router.patch("/usage/:id", async (req, res): Promise<void> => {
     })
     .where(and(eq(energyUsageTable.id, params.data.id), eq(energyUsageTable.userId, req.userId!)))
     .returning({ id: energyUsageTable.id });
-  await evaluateUsage(req.userId!, device, nextEnergy, nextDuration, nextRecordedAt, tariff);
+  await db
+    .delete(wasteEventsTable)
+    .where(
+      and(
+        eq(wasteEventsTable.userId, req.userId!),
+        eq(wasteEventsTable.usageId, updated.id),
+      ),
+    );
+  await evaluateUsage(
+    req.userId!,
+    updated.id,
+    device,
+    nextEnergy,
+    nextDuration,
+    nextRecordedAt,
+    tariff,
+  );
   const record = await toUsageDto(req.userId!, updated.id);
   res.json(UpdateUsageResponse.parse(record));
 });
@@ -798,11 +830,11 @@ router.get("/automation-actions", async (req, res): Promise<void> => {
 router.get("/dashboard", async (req, res): Promise<void> => {
   const userId = req.userId!;
   const now = new Date();
-  const startToday = new Date(now);
-  startToday.setUTCHours(0, 0, 0, 0);
-  const startMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const startWeek = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
-  startWeek.setUTCHours(0, 0, 0, 0);
+  const todayKey = indiaDateKey(now);
+  const startToday = indiaDayStart(todayKey);
+  const startMonth = indiaDayStart(`${todayKey.slice(0, 7)}-01`);
+  const startWeekKey = shiftDateKey(todayKey, -6);
+  const startWeek = indiaDayStart(startWeekKey);
   const tariff = await tariffFor(userId);
   const devices = await db.select().from(devicesTable).where(eq(devicesTable.userId, userId));
   const usageStart = startMonth < startWeek ? startMonth : startWeek;
@@ -839,6 +871,15 @@ router.get("/dashboard", async (req, res): Promise<void> => {
     })
     .from(automationActionsTable)
     .where(eq(automationActionsTable.userId, userId));
+  const [monthlyActionTotals] = await db
+    .select({ count: count() })
+    .from(automationActionsTable)
+    .where(
+      and(
+        eq(automationActionsTable.userId, userId),
+        gte(automationActionsTable.createdAt, startMonth),
+      ),
+    );
   const currentLoadKw =
     devices
       .filter((device) => device.active && device.state === "ON")
@@ -848,12 +889,11 @@ router.get("/dashboard", async (req, res): Promise<void> => {
   const moneySavedInr = Number(actionTotals?.moneySaved ?? 0);
   const daily = new Map<string, number>();
   for (const row of usage) {
-    const key = row.recordedAt.toISOString().slice(0, 10);
+    const key = indiaDateKey(row.recordedAt);
     daily.set(key, (daily.get(key) ?? 0) + row.energyKwh);
   }
   const dailyTrend = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(startWeek.getTime() + index * 24 * 60 * 60 * 1000);
-    const key = date.toISOString().slice(0, 10);
+    const key = shiftDateKey(startWeekKey, index);
     return { date: key, energyKwh: roundEnergy(daily.get(key) ?? 0) };
   });
   const monthlyUsage = await db
@@ -861,12 +901,13 @@ router.get("/dashboard", async (req, res): Promise<void> => {
       deviceId: energyUsageTable.deviceId,
       deviceName: devicesTable.name,
       energyKwh: energyUsageTable.energyKwh,
+      recordedAt: energyUsageTable.recordedAt,
     })
     .from(energyUsageTable)
     .innerJoin(devicesTable, eq(energyUsageTable.deviceId, devicesTable.id))
     .where(and(eq(energyUsageTable.userId, userId), gte(energyUsageTable.recordedAt, startMonth)));
   const deviceBuckets = new Map<number, { deviceId: number; deviceName: string; energyKwh: number }>();
-  for (const row of monthlyUsage) {
+  for (const row of monthlyUsage.filter((row) => row.recordedAt >= startToday)) {
     const current = deviceBuckets.get(row.deviceId) ?? {
       deviceId: row.deviceId,
       deviceName: row.deviceName,
@@ -906,7 +947,7 @@ router.get("/dashboard", async (req, res): Promise<void> => {
     potentialSavingsInr: calculateCostInr(wastedEnergyKwh, tariff),
     energySavedKwh: roundEnergy(energySavedKwh),
     moneySavedInr: Math.round(moneySavedInr * 100) / 100,
-    automationActionsCount: Number(actionTotals?.count ?? 0),
+    automationActionsCount: Number(monthlyActionTotals?.count ?? 0),
     deviceSummary: {
       total: devices.length,
       on: devices.filter((device) => device.active && device.state === "ON").length,
@@ -1029,7 +1070,7 @@ router.post("/simulation/run", async (req, res): Promise<void> => {
       (device.ratedPowerW / 1000) * (durationMinutes / 60) * dutyFactor,
     );
     const recordedAt = new Date();
-    await db.insert(energyUsageTable).values({
+    const [record] = await db.insert(energyUsageTable).values({
       userId,
       deviceId: device.id,
       energyKwh,
@@ -1037,10 +1078,11 @@ router.post("/simulation/run", async (req, res): Promise<void> => {
       recordedAt,
       costInr: calculateCostInr(energyKwh, tariff),
       simulated: true,
-    });
+    }).returning({ id: energyUsageTable.id });
     recordsCreated += 1;
     const result = await evaluateUsage(
       userId,
+      record.id,
       device,
       energyKwh,
       durationMinutes,
@@ -1057,6 +1099,24 @@ router.post("/simulation/run", async (req, res): Promise<void> => {
       actionsExecuted,
     }),
   );
+});
+
+router.get("/ai/analysis", async (req, res): Promise<void> => {
+  const [saved] = await db
+    .select()
+    .from(aiAnalysesTable)
+    .where(eq(aiAnalysesTable.userId, req.userId!))
+    .orderBy(desc(aiAnalysesTable.createdAt))
+    .limit(1);
+  const analysis = saved
+    ? {
+        ...saved,
+        deviceId: saved.deviceId ?? null,
+        deviceName: saved.deviceName ?? null,
+        createdAt: asIso(saved.createdAt),
+      }
+    : null;
+  res.json(GetLatestEnergyAnalysisResponse.parse({ analysis }));
 });
 
 router.post("/ai/analysis", async (req, res): Promise<void> => {
@@ -1190,7 +1250,7 @@ router.post("/ai/analysis", async (req, res): Promise<void> => {
           properties: {
             problemDetected: { type: Type.STRING },
             whyItMatters: { type: Type.STRING },
-            targetDevice: { type: Type.STRING },
+            targetDevice: { type: Type.STRING, enum: devices.map((device) => device.name) },
             recommendedAction: { type: Type.STRING },
             priority: { type: Type.STRING, enum: ["low", "medium", "high"] },
             estimatedSavingsKwh: { type: Type.NUMBER },
@@ -1231,10 +1291,12 @@ router.post("/ai/analysis", async (req, res): Promise<void> => {
     return;
   }
 
-  const matchedDevice =
-    devices.find((device) => device.name === validated.data.targetDevice) ??
-    devices.find((device) => device.name === deviceUsage[0]?.deviceName) ??
-    null;
+  const matchedDevice = devices.find((device) => device.name === validated.data.targetDevice);
+  if (!matchedDevice) {
+    req.log.warn({ targetDevice: validated.data.targetDevice }, "Gemini selected an unknown device");
+    res.status(502).json({ error: "Gemini returned an invalid analysis. Please try again." });
+    return;
+  }
   const estimatedSavingsKwh = Math.min(
     validated.data.estimatedSavingsKwh,
     suppliedSavingsBoundKwh,
@@ -1245,8 +1307,8 @@ router.post("/ai/analysis", async (req, res): Promise<void> => {
       userId,
       problemDetected: validated.data.problemDetected,
       whyItMatters: validated.data.whyItMatters,
-      deviceId: matchedDevice?.id ?? null,
-      deviceName: matchedDevice?.name ?? null,
+      deviceId: matchedDevice.id,
+      deviceName: matchedDevice.name,
       recommendedAction: validated.data.recommendedAction,
       priority: validated.data.priority,
       estimatedSavingsKwh,
@@ -1256,8 +1318,8 @@ router.post("/ai/analysis", async (req, res): Promise<void> => {
   res.json(
     RunEnergyAnalysisResponse.parse({
       ...saved,
-      deviceId: saved.deviceId ?? null,
-      deviceName: saved.deviceName ?? null,
+      deviceId: saved.deviceId,
+      deviceName: saved.deviceName,
       createdAt: asIso(saved.createdAt),
     }),
   );

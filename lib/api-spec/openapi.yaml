@@ -525,6 +525,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/SimulationResult"
   /ai/analysis:
+    get:
+      operationId: getLatestEnergyAnalysis
+      tags: [ai]
+      summary: Get the latest saved energy analysis for the signed-in account
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Latest saved analysis, or null when none exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LatestEnergyAnalysis"
     post:
       operationId: runEnergyAnalysis
       tags: [ai]
@@ -779,7 +792,7 @@ components:
           items:
             type: object
             properties:
-              date: { type: string, format: date }
+              date: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
               energyKwh: { type: number }
             required: [date, energyKwh]
         deviceUsage:
@@ -839,4 +852,12 @@ components:
         estimatedSavingsInr: { type: number }
         createdAt: { type: string, format: date-time }
       required: [id, problemDetected, whyItMatters, deviceId, deviceName, recommendedAction, priority, estimatedSavingsKwh, estimatedSavingsInr, createdAt]
+    LatestEnergyAnalysis:
+      type: object
+      properties:
+        analysis:
+          oneOf:
+            - $ref: "#/components/schemas/EnergyAnalysis"
+            - type: "null"
+      required: [analysis]
 

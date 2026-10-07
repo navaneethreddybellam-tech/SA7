@@ -485,6 +485,10 @@ export interface EnergyAnalysis {
   createdAt: string;
 }
 
+export interface LatestEnergyAnalysis {
+  analysis: EnergyAnalysis | null;
+}
+
 /**
  * Invalid request
  */

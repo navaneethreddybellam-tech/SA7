@@ -1,0 +1,307 @@
+IMPORTANT: DO NOT REBUILD THE PROJECT FROM SCRATCH.
+
+You are working on the existing SA7 – Smart Energy Automation System project.
+The current UI/design and existing working functionality are mostly correct.
+Your task is ONLY to audit the existing project and fix the functional issues listed below.
+
+STRICT RULES:
+- Preserve the current UI design, layout, theme, navigation, and existing working features.
+- Do NOT add new pages unless absolutely required to fix an existing feature.
+- Do NOT add unnecessary buttons or features.
+- Do NOT add a chatbot, social features, payments, subscriptions, voice features, maps, extra APIs, or unrelated functionality.
+- Do NOT create duplicate functionality.
+- Do NOT change the project scope.
+- Do NOT replace working code unnecessarily.
+- Every visible button must perform a real implemented action.
+- Do not use fake/mock values for metrics that should come from the database.
+
+PROJECT REQUIREMENT:
+Smart Energy Automation System:
+Monitor energy consumption, detect unnecessary energy usage, provide Gemini-powered recommendations, and automatically execute rule-based actions on virtual smart devices.
+
+CURRENCY:
+Use INR only.
+Every monetary value must be displayed as ₹.
+Never display $, USD, dollars, or another currency.
+
+ENERGY:
+Use kWh consistently.
+
+FIX 1 — DASHBOARD DATA CONSISTENCY
+There is currently a mismatch where:
+- "Energy Today" can show 0 kWh
+while device usage contributes non-zero energy such as AC/fan/refrigerator usage.
+
+Fix the underlying calculation and data aggregation.
+All dashboard values must come from the actual database records and the selected/current date range.
+
+Ensure:
+- Today's kWh = sum of today's relevant usage records
+- Monthly kWh = sum of current month's usage records
+- Estimated cost = kWh × configured INR tariff
+- Potential wasted energy = sum of valid detected waste
+- Potential savings = wasted kWh × tariff
+- Actual savings = energy saved from executed automation × tariff
+- Device-level totals and dashboard totals must reconcile
+
+Do not hard-code dashboard numbers.
+
+Create reusable backend calculation functions so the same formulas are used everywhere.
+
+FIX 2 — SIMULATION MUST CREATE REAL DATA
+The existing "Run 30 min simulation" feature must perform real application work.
+
+When triggered:
+1. Generate realistic energy telemetry for virtual devices.
+2. Store generated usage in the database.
+3. Update device state when appropriate.
+4. Recalculate energy/cost metrics.
+5. Run waste-detection logic.
+6. Evaluate enabled automation rules.
+7. Execute valid automation actions.
+8. Record automation actions and estimated savings.
+9. Refresh/update the dashboard.
+
+Do not merely change values in the frontend.
+Simulation must create persistent backend/database records.
+
+Use realistic values based on each device's power rating and runtime.
+Do not generate impossible or nonsensical energy values.
+
+FIX 3 — AUTOMATION MUST ACTUALLY EXECUTE
+Automation rules must be functional.
+
+Example:
+If AC runtime exceeds configured limit:
+ON → automation trigger → OFF
+
+Or:
+If consumption exceeds configured threshold:
+ON → automation trigger → OFF
+
+When an automation rule triggers:
+- Actually update the virtual device state in the database.
+- Record the previous state.
+- Record the new state.
+- Record the triggering rule.
+- Record the trigger reason.
+- Record timestamp.
+- Estimate energy saved in kWh.
+- Estimate money saved in ₹.
+
+Do not display "Action Executed" unless the state change and database record actually happened.
+
+Only enabled automation rules should execute.
+
+Prevent duplicate execution of the same rule unnecessarily.
+
+FIX 4 — WASTE DETECTION MUST BE MEANINGFUL
+Implement/repair waste detection using measurable conditions such as:
+- Device running beyond configured preferred runtime.
+- Consumption above configured threshold.
+- Consumption significantly above historical average.
+- Unusual usage spike.
+
+Use device type and configuration where relevant.
+Do not mark normal refrigerator operation as waste simply because it runs continuously.
+
+For each waste event store:
+- Device
+- Reason
+- Severity
+- Wasted kWh
+- Potential cost in ₹
+- Timestamp
+- Status
+
+The numbers must be derived from real usage data.
+
+FIX 5 — SAVINGS CALCULATION
+Make savings traceable and consistent.
+
+Use:
+cost = energy_kwh × tariff_inr_per_kwh
+
+For automation:
+saved_energy_kwh = estimated avoided energy
+saved_money_inr = saved_energy_kwh × tariff
+
+Do not invent savings numbers in the UI.
+
+FIX 6 — GEMINI AI
+Keep Gemini as a meaningful energy-analysis feature.
+
+IMPORTANT SECURITY:
+- Gemini API key must remain in Replit Secrets/environment variables.
+- Never expose it in frontend code.
+- Gemini must be called ONLY from the backend.
+- Never send the API key to the browser.
+- Use structured JSON output.
+- Validate the returned JSON before sending it to frontend.
+- Handle Gemini failures gracefully.
+- Do not log secrets.
+- Do not call Gemini on every page load.
+
+The existing AI feature should analyze actual stored energy data.
+
+Return useful structured information such as:
+- highest consumption concern
+- affected device
+- reason
+- priority
+- recommended action
+- estimated possible energy savings
+- estimated possible monetary savings in INR
+
+The AI recommendation must be based on data supplied by the application, not invented random values.
+
+FIX 7 — REMOVE DUPLICATE / UNNECESSARY AI ACTIONS
+There are multiple analysis-related buttons/actions such as:
+- Run Energy Analysis
+- Request Analysis
+- Request First Analysis
+
+Consolidate them into ONE clear primary action:
+
+"Run AI Energy Analysis"
+
+Remove duplicate buttons and redundant actions.
+
+Do not add any replacement buttons unless necessary.
+
+FIX 8 — BUTTON AUDIT
+Audit the entire application.
+
+Remove any button that:
+- does nothing
+- is duplicated
+- is unrelated to the problem
+- is only decorative
+- is a placeholder
+- is not fully implemented
+
+Keep only necessary working actions related to:
+- Authentication
+- Devices
+- Energy usage
+- Automation
+- Waste detection
+- AI analysis
+- Relevant tariff/configuration
+
+Do not add extra features.
+
+FIX 9 — AUTHORIZATION / DATA ISOLATION
+Verify that authenticated users can access only their own:
+- devices
+- usage records
+- automation rules
+- waste events
+- automation action logs
+- AI analyses
+- relevant settings
+
+Test IDs/URLs to ensure one user cannot access another user's records.
+
+FIX 10 — VALIDATION AND ERROR HANDLING
+Verify:
+- negative kWh cannot be entered
+- negative tariff cannot be entered
+- invalid power values are rejected
+- invalid runtime/threshold values are rejected
+- malformed automation rules are rejected
+- unauthorized requests are rejected
+- database errors are handled
+- Gemini errors are handled
+- empty data states are handled properly
+
+Do not expose stack traces, secrets, or internal implementation details to the user.
+
+FIX 11 — DATABASE INTEGRITY
+Inspect the current schema and migrations.
+
+Do not create redundant tables or duplicate entities.
+Make sure relationships are correct.
+
+Verify that:
+- deleting a device does not leave broken orphan records
+- usage references valid devices
+- automation rules reference valid devices
+- waste events reference valid usage/device data
+- action logs reference valid automation/device data
+
+Use the existing database setup wherever possible.
+
+FIX 12 — UI PRESERVATION
+The existing visual design is already acceptable.
+
+DO NOT redesign the whole application.
+
+Only make UI changes necessary to:
+- show corrected data
+- show real automation results
+- show real waste/savings values
+- remove duplicate buttons
+- display errors/loading states properly
+
+Keep the existing professional look.
+
+FIX 13 — DEMO FLOW
+After fixing everything, ensure this complete demo works:
+
+1. Login
+2. Dashboard shows actual energy data
+3. INR cost is consistent with kWh
+4. Open Devices
+5. Show a virtual device that is ON
+6. Run the simulation
+7. New usage is saved
+8. Waste detection runs
+9. Enabled automation rule triggers
+10. Device changes ON → OFF
+11. Action is saved
+12. Energy saved and ₹ saved are calculated
+13. Dashboard updates
+14. Run AI Energy Analysis
+15. Gemini returns a structured analysis based on real data
+16. Recommendation and savings are displayed in ₹
+
+TESTING:
+After implementing the fixes:
+- run the application
+- test login/register
+- test CRUD
+- test simulation
+- test calculations
+- test automation execution
+- test waste detection
+- test Gemini integration
+- test authorization
+- check frontend console
+- check backend logs/errors
+- fix all errors found
+
+FINAL CLEANUP:
+- Remove unused imports
+- Remove dead code
+- Remove duplicate components
+- Remove unused dependencies where safe
+- Remove placeholder text
+- Remove fake metrics
+- Remove fake actions
+- Remove duplicate buttons
+- Ensure every visible button works
+- Ensure every dashboard number is data-driven
+- Ensure all currency is INR ₹
+- Ensure no USD/$ remains anywhere
+
+MOST IMPORTANT:
+Do not add features.
+Do not redesign unnecessarily.
+Do not rebuild from scratch.
+Fix the existing implementation and make the current project fully functional and competition-ready.
+
+At the end, give me a concise summary of only:
+1. Fixes completed
+2. Any remaining genuine issue
+3. How to test the final demo

@@ -68,6 +68,7 @@ export const wasteEventsTable = pgTable(
   {
     id: serial("id").primaryKey(),
     userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+    usageId: integer("usage_id").notNull().references(() => energyUsageTable.id, { onDelete: "cascade" }),
     deviceId: integer("device_id").notNull().references(() => devicesTable.id, { onDelete: "cascade" }),
     reason: text("reason").notNull(),
     severity: text("severity").notNull(),
@@ -79,6 +80,7 @@ export const wasteEventsTable = pgTable(
   (table) => [
     index("waste_events_user_idx").on(table.userId, table.createdAt),
     index("waste_events_device_idx").on(table.deviceId),
+    uniqueIndex("waste_events_usage_unique_idx").on(table.usageId),
   ],
 );
 
@@ -88,7 +90,7 @@ export const automationActionsTable = pgTable(
     id: serial("id").primaryKey(),
     userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
     deviceId: integer("device_id").notNull().references(() => devicesTable.id, { onDelete: "cascade" }),
-    ruleId: integer("rule_id").notNull(),
+    ruleId: integer("rule_id").notNull().references(() => automationRulesTable.id, { onDelete: "cascade" }),
     triggerReason: text("trigger_reason").notNull(),
     previousState: text("previous_state").notNull(),
     newState: text("new_state").notNull(),

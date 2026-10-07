@@ -41,6 +41,7 @@ export * from './energyAnalysis';
 export * from './energyAnalysisPriority';
 export * from './error';
 export * from './healthStatus';
+export * from './latestEnergyAnalysis';
 export * from './notFoundResponse';
 export * from './ruleEnabledInput';
 export * from './simulationInput';

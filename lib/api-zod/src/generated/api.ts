@@ -632,6 +632,25 @@ export const RunSimulationResponse = zod.object({
 
 
 /**
+ * @summary Get the latest saved energy analysis for the signed-in account
+ */
+export const GetLatestEnergyAnalysisResponse = zod.object({
+  "analysis": zod.union([zod.object({
+  "id": zod.number().int(),
+  "problemDetected": zod.string(),
+  "whyItMatters": zod.string(),
+  "deviceId": zod.number().int().nullable(),
+  "deviceName": zod.string().nullable(),
+  "recommendedAction": zod.string(),
+  "priority": zod.enum(['low', 'medium', 'high']),
+  "estimatedSavingsKwh": zod.number(),
+  "estimatedSavingsInr": zod.number(),
+  "createdAt": zod.coerce.date()
+}),zod.null()])
+})
+
+
+/**
  * @summary Analyze recent household energy usage with Gemini
  */
 export const RunEnergyAnalysisResponse = zod.object({
